@@ -10,6 +10,38 @@ This README documents the project, environment variables, how to run locally usi
 - `model_data/`: Example data used by backend (deploy stubs and sample logs)
 - `docker-compose.yml`: Compose configuration for running both services together
 
+## Architecture Diagram
+
+![alt text](Architecture-1.svg)
+
+## Project structure
+
+```
+sherlock-simple/
+├─ backend/
+│  ├─ app/
+│  │  ├─ main.py          # FastAPI server
+│  │  ├─ rag.py           # RAG + OpenAI / Azure integration
+│  │  ├─ collectors.py    # synthetic log & deploy generators, search
+│  │  ├─ correlation.py   # simple ranking/correlation logic
+│  │  ├─ utils.py         # validation + audit helpers
+│  ├─ Dockerfile
+│  ├─ requirements.txt
+│  └─ model_data/         # persisted demo logs + deploy stubs (bind-mounted)
+├─ frontend/
+│  ├─ (React + static build served via nginx)
+│  └─ Dockerfile
+├─ docker-compose.yml
+└─ .env                  # Store API key and other endpoint info
+```
+
+## Notes / How components interact
+
+- Frontend sends queries to Backend (`/triage`) and displays results.
+- Backend collects logs from `model_data/` (or generated via `/generate_sample`), correlates evidence, and (optionally) calls an LLM via `rag.py`.
+- LLM calls use either Azure OpenAI (preferred if AZURE_* env vars present) or OpenAI SaaS (if `OPENAI_API_KEY` present). Use `SKIP_EMBEDDINGS=1` to avoid heavy ML dependencies.
+- Docker Compose orchestrates `frontend` and `backend` services and mounts `model_data` as a persistent volume.
+
 **What it does**
 - Collects fabricated logs and deploy stubs (`/generate_sample`).
 - Searches and correlates evidence for a query (`/triage`).
