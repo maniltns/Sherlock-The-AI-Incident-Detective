@@ -1,0 +1,33 @@
+version: "3.8"
+
+services:
+  backend:
+    build: ./backend
+    image: sherlock-backend:local
+    ports:
+      - "8000:8000"
+    environment:
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - AZURE_OPENAI_KEY=${AZURE_OPENAI_KEY}
+      - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT}
+      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION:-2024-02-01}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}        
+      - SKIP_EMBEDDINGS=${SKIP_EMBEDDINGS:-0}
+    volumes:
+      - sherlock-data:/app/model_data
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+
+  frontend:
+    build: ./frontend
+    image: sherlock-frontend:local
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  sherlock-data: {}
+
+

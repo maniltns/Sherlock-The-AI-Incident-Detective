@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Sherlock - Incident Chat</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Sherlock — Incident Chat</h1>
+      <p class="subtitle">Type a natural query and press Send. Use "Generate Sample" to create a synthetic incident.</p>
+    </header>
+
+    <main>
+      <div class="controls">
+        <textarea id="query" placeholder="e.g. Why are we seeing 500s on api-prod-01 since 10:00?" rows="3"></textarea>
+        <div class="row">
+          <label>Time window (minutes)
+            <input id="timeWindow" type="number" value="30" min="1" max="1440"/>
+          </label>
+          <button id="sendBtn">Send</button>
+          <button id="sampleBtn" class="muted">Generate Sample</button>
+        </div>
+      </div>
+
+      <section id="result" class="hidden">
+        <div id="summary" class="card"></div>
+        <div id="evidence" class="card"></div>
+        <div id="actions" class="card"></div>
+        <div id="raw" class="card"><h3>Raw JSON</h3><pre id="rawJson"></pre></div>
+      </section>
+
+      <div id="info" class="card muted small">Backend endpoint: <span id="backendUrl"></span></div>
+    </main>
+
+    <footer>
+      <small>PoC — OpenAI-backed RAG. No auto-remediation. Keep PII redacted.</small>
+    </footer>
+  </div>
+<script src="app.js"></script>
+</body>
+</html>

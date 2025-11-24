@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1000" height="640" viewBox="0 0 1000 640" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="10" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#333" />
+    </marker>
+    <style>
+      .box { fill:#f8fafc; stroke:#334155; stroke-width:1.8; rx:8; ry:8 }
+      .title { font: bold 14px Arial; fill:#0f172a }
+      .label { font: 12px Arial; fill:#0f172a }
+      .sub { font: 11px Arial; fill:#334155 }
+      .service { fill:#eef2ff; stroke:#3b82f6; stroke-width:1.6 }
+      .external { fill:#fff7ed; stroke:#f97316; stroke-width:1.6 }
+      .network { stroke:#94a3b8; stroke-dasharray:6 4; fill:none }
+    </style>
+  </defs>
+
+  <!-- Title -->
+  <text x="20" y="28" class="title">Sherlock - Architecture</text>
+
+  <!-- User -->
+  <g transform="translate(40,64)">
+    <rect class="box" x="0" y="0" width="160" height="56"/>
+    <text x="12" y="28" class="label">User / Operator</text>
+    <text x="12" y="44" class="sub">Browser / CLI</text>
+  </g>
+
+  <!-- Frontend -->
+  <g transform="translate(240,40)">
+    <rect class="service" x="0" y="0" width="220" height="92"/>
+    <text x="14" y="26" class="label">Frontend (nginx)</text>
+    <text x="14" y="44" class="sub">Static app / UI</text>
+    <text x="14" y="62" class="sub">Port 3000</text>
+  </g>
+
+  <!-- Backend -->
+  <g transform="translate(540,24)">
+    <rect class="service" x="0" y="0" width="360" height="160"/>
+    <text x="14" y="26" class="label">Backend (FastAPI)</text>
+    <text x="14" y="44" class="sub">Exposes /, /generate_sample, /triage</text>
+    
+    <!-- internal boxes -->
+    <rect x="16" y="64" width="156" height="72" class="box"/>
+    <text x="28" y="86" class="sub">collectors.py</text>
+    <text x="28" y="102" class="sub">(logs + deploys)</text>
+
+    <rect x="196" y="64" width="156" height="72" class="box"/>
+    <text x="208" y="86" class="sub">correlation.py</text>
+    <text x="208" y="102" class="sub">(ranking & score)</text>
+
+    <rect x="106" y="144" width="156" height="64" class="box"/>
+    <text x="118" y="166" class="sub">rag.py</text>
+    <text x="118" y="182" class="sub">(OpenAI / Azure call)</text>
+
+    <text x="248" y="42" class="sub">Port 8000</text>
+  </g>
+
+  <!-- Model data -->
+  <g transform="translate(540,210)">
+    <rect class="box" x="0" y="0" width="220" height="76"/>
+    <text x="14" y="28" class="label">model_data/ (volume)</text>
+    <text x="14" y="46" class="sub">sample_logs.jsonl, deploys.json</text>
+  </g>
+
+  <!-- External AI -->
+  <g transform="translate(540,320)">
+    <rect class="external" x="0" y="0" width="360" height="84"/>
+    <text x="14" y="28" class="label">Azure OpenAI / OpenAI SaaS</text>
+    <text x="14" y="46" class="sub">Chat completions (gpt-4o-mini, etc.)</text>
+  </g>
+
+  <!-- Orchestration / Docker Compose -->
+  <g transform="translate(24,520)">
+    <rect class="box" x="0" y="0" width="920" height="100"/>
+    <text x="12" y="24" class="label">Docker Compose</text>
+    <text x="12" y="44" class="sub">services: backend, frontend; volumes: sherlock-data</text>
+  </g>
+
+  <!-- Arrows and connections -->
+  <!-- User -> Frontend -->
+  <line x1="200" y1="88" x2="240" y2="88" stroke="#334155" stroke-width="2" marker-end="url(#arrow)" />
+
+  <!-- Frontend -> Backend -->
+  <line x1="460" y1="86" x2="540" y2="86" stroke="#334155" stroke-width="2" marker-end="url(#arrow)" />
+
+  <!-- Backend internal -> model_data -->
+  <line x1="640" y1="184" x2="640" y2="210" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)" />
+
+  <!-- Backend -> External AI -->
+  <line x1="720" y1="184" x2="720" y2="320" stroke="#334155" stroke-width="2" marker-end="url(#arrow)" />
+
+  <!-- model_data -> Docker Compose (volume) -->
+  <line x1="640" y1="286" x2="160" y2="520" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4 4" marker-end="url(#arrow)" />
+
+  <!-- Compose box border label -->
+  <text x="420" y="560" class="sub">Orchestrates services, networking, and volumes</text>
+</svg>
