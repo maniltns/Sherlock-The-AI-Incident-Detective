@@ -2,7 +2,7 @@
 import os
 import time
 import logging
-from .config import load_env, azure_config, openai_key as get_openai_key
+from .config import load_env, azure_config, openai_key as get_openai_key, openai_saas_model
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -85,6 +85,25 @@ def health():
     """Lightweight health endpoint that returns 200 when service is up."""
     return {"status": "ok", "time": int(time.time())}
 
+
+@app.get('/debug/credentials')
+def debug_credentials():
+    """Return minimal non-secret status about credentials available to the backend.
+    This helps debug when containers report auth errors (e.g., 401 from Azure OpenAI).
+    """
+    return {
+        "azure": {
+            "endpoint": AZURE_ENDPOINT,
+            "deployment": AZURE_DEPLOY,
+            "has_key": bool(AZURE_KEY),
+            "api_version": _AZURE_API_VERSION,
+        },
+        "openai": {
+            "has_key": bool(OPENAI_KEY),
+            "saas_model": openai_saas_model(),
+        },
+    }
+
 @app.post("/triage")
 def triage(req: TriageRequest):
     """
@@ -151,6 +170,11 @@ def triage(req: TriageRequest):
             "suggested_actions": [{"action": "Investigate top evidence and logs", "risk": "low", "evidence": [top_k[0]["id"]]}],
             "evidence_map": {ev["id"]: ev["text"][:800] for ev in top_k}
         }
+        # attach limited error info for debug (do not include secret values)
+        try:
+            llm_json["llm_error"] = str(e)[:1000]
+        except Exception:
+            pass
 
     # 4) Validate LLM output; if invalid, use fallback
     valid, reason = validate_llm_output(llm_json, [ev["id"] for ev in top_k])

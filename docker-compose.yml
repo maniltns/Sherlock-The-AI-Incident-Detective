@@ -6,18 +6,11 @@ services:
     image: sherlock-backend:local
     ports:
       - "8000:8000"
-    # Load variables from .env and also provide explicit environment variable
-    # names (both old and new names) so either naming convention works.
+    # Load variables from .env directly into the container environment.
     env_file:
       - .env
     environment:
-      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
-      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
-      - AZURE_OPENAI_KEY=${AZURE_OPENAI_KEY}
-      - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT}
-      - AZURE_OPENAI_DEPLOYMENT_NAME=${AZURE_OPENAI_DEPLOYMENT_NAME}
-      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION:-2024-02-01}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}        
+      # Keep SKIP_EMBEDDINGS default behavior but avoid explicit substitution
       - SKIP_EMBEDDINGS=${SKIP_EMBEDDINGS:-0}
     volumes:
       - sherlock-data:/app/model_data

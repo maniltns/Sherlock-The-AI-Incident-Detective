@@ -126,7 +126,7 @@ def build_prompt_and_query(evidence_items, openai_key: Optional[str]):
                 raise RuntimeError("Azure endpoint not resolvable")
 
             try:
-                from openai import AzureOpenAI
+                from openai import AzureOpenAI, AuthenticationError as OpenAIAuthError
             except Exception:
                 raise RuntimeError('Azure OpenAI client not available (install openai package)')
 
@@ -136,12 +136,42 @@ def build_prompt_and_query(evidence_items, openai_key: Optional[str]):
                 api_version=azure_api_version,
             )
 
-            resp = client.chat.completions.create(
-                model=azure_deploy,        # deployment name
-                messages=messages,
-                temperature=0.0,
-                max_tokens=700
-            )
+            try:
+                resp = client.chat.completions.create(
+                    model=azure_deploy,        # deployment name
+                    messages=messages,
+                    temperature=0.0,
+                    max_tokens=700
+                )
+            except OpenAIAuthError as e:
+                # AuthenticationError from the Azure SDK means either the key is invalid
+                # or the endpoint/deployment doesn't match the resource. Log help and
+                # optionally fall back to OpenAI SaaS if an API key is available.
+                logger.error(
+                    "Azure OpenAI auth failed; endpoint=%s, deployment=%s, api_version=%s. Check AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT (region), and ensure the deployment is present. Error: %s",
+                    azure_endpoint,
+                    azure_deploy,
+                    azure_api_version,
+                    e,
+                )
+                # Try falling back to OpenAI SaaS if a key is available
+                fallback_key = get_openai_key()
+                if fallback_key:
+                    logger.info("Attempting OpenAI SaaS fallback due to Azure auth failure")
+                    try:
+                        from openai import OpenAI
+                    except Exception:
+                        raise RuntimeError('OpenAI client not available (install openai package)')
+                    client = OpenAI(api_key=fallback_key)
+                    resp = client.chat.completions.create(
+                        model=openai_saas_model(),
+                        messages=messages,
+                        temperature=0.0,
+                        max_tokens=700,
+                    )
+                else:
+                    # Re-raise original auth error if we cannot fallback
+                    raise
         else:
             # ============================
             # 2) OpenAI SaaS fallback
