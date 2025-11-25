@@ -10,8 +10,10 @@ logger = logging.getLogger("rag")
 logger.setLevel(logging.INFO)
 
 # New SDK imports
-from openai import OpenAI, AzureOpenAI
+# Import openai SDK lazily in the function to avoid hard dependency at module import time
+from .config import load_env, azure_config, openai_key as get_openai_key, openai_saas_model
 
+load_env(override=True)  # ensure any .env settings are available and override existing env vars
 MODEL = None
 MODEL_NAME = "all-MiniLM-L6-v2"
 SKIP_EMB = os.getenv("SKIP_EMBEDDINGS", "0").lower() in ("1", "true")
@@ -60,11 +62,8 @@ def build_prompt_and_query(evidence_items, openai_key: Optional[str]):
     - OpenAI SaaS fallback (if OPENAI_API_KEY present)
     """
 
-    # Azure configuration
-    azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-    azure_key = os.getenv("AZURE_OPENAI_KEY")
-    azure_deploy = os.getenv("AZURE_OPENAI_DEPLOYMENT")
-    azure_api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
+    # Load Azure/OpenAI config (support multiple variable names)
+    azure_endpoint, azure_key, azure_deploy, azure_api_version = azure_config()
 
     # Normalize endpoint if present (ensure scheme, strip trailing slash)
     if azure_endpoint:
@@ -106,6 +105,10 @@ def build_prompt_and_query(evidence_items, openai_key: Optional[str]):
         {"role": "user", "content": user_prompt},
     ]
 
+    # If openai_key wasn't supplied, check env config
+    if not openai_key:
+        openai_key = get_openai_key()
+
     try:
         # ============================
         # 1) Azure OpenAI mode (preferred)
@@ -121,6 +124,11 @@ def build_prompt_and_query(evidence_items, openai_key: Optional[str]):
                     , azure_endpoint
                 )
                 raise RuntimeError("Azure endpoint not resolvable")
+
+            try:
+                from openai import AzureOpenAI
+            except Exception:
+                raise RuntimeError('Azure OpenAI client not available (install openai package)')
 
             client = AzureOpenAI(
                 api_key=azure_key,
@@ -141,12 +149,17 @@ def build_prompt_and_query(evidence_items, openai_key: Optional[str]):
             if not openai_key:
                 raise RuntimeError("No valid OpenAI or Azure credentials found.")
 
-            logger.info("Using OpenAI SaaS model gpt-4o-mini")
+            saas_model = openai_saas_model()
+            logger.info("Using OpenAI SaaS model: %s", saas_model)
 
+            try:
+                from openai import OpenAI
+            except Exception:
+                raise RuntimeError('OpenAI client not available (install openai package)')
             client = OpenAI(api_key=openai_key)
 
             resp = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=saas_model,
                 messages=messages,
                 temperature=0.0,
                 max_tokens=700

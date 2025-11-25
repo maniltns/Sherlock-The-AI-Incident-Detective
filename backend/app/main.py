@@ -1,6 +1,7 @@
 # backend/app/main.py
 import os
 import time
+from .config import load_env, azure_config, openai_key as get_openai_key
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -10,17 +11,16 @@ from .correlation import correlate_evidence
 from .rag import init_rag_store, build_prompt_and_query
 from .utils import validate_llm_output, attach_audit
 
-OPENAI_KEY = os.getenv("OPENAI_API_KEY")
+load_env(override=True)  # make sure .env is loaded early and override any existing env vars
+OPENAI_KEY = get_openai_key()
 # Allow either OpenAI SaaS key OR Azure OpenAI configuration to be provided.
 # If neither is present, fail fast with a clear message.
-AZURE_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_KEY = os.getenv("AZURE_OPENAI_KEY")
-AZURE_DEPLOY = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+AZURE_ENDPOINT, AZURE_KEY, AZURE_DEPLOY, _AZURE_API_VERSION = azure_config()
 
 if not OPENAI_KEY and not (AZURE_ENDPOINT and AZURE_KEY and AZURE_DEPLOY):
     raise RuntimeError(
         "No OpenAI credentials found: set OPENAI_API_KEY for OpenAI SaaS, "
-        "or AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_KEY and AZURE_OPENAI_DEPLOYMENT for Azure OpenAI"
+        "or AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_KEY|AZURE_OPENAI_API_KEY and AZURE_OPENAI_DEPLOYMENT|AZURE_OPENAI_DEPLOYMENT_NAME for Azure OpenAI"
     )
 
 # init RAG store (embedding model / optional FAISS)

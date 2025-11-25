@@ -67,6 +67,10 @@ Create a `.env` file in the repository root (an example is included). The applic
 - `AZURE_OPENAI_API_VERSION` : (optional) API version for Azure; default in compose is `2024-02-01` or `2024-12-01-preview`.
 - `SKIP_EMBEDDINGS` : Set to `1` to skip loading local embedding model and avoid heavy ML dependencies (default safe for development).
 
+Notes on `.env` parsing and model selection:
+- The backend will load environment variables from a `.env` file in the repository root during startup and will override existing process environment variables by default (this helps ensure predictable local dev behavior).
+- To enable the Raptor mini model for OpenAI SaaS by default, set the `ENABLE_RAPTOR_MINI=1` in your `.env`. The backend will choose `raptor-mini` as the default SaaS model unless overridden via `OPENAI_MODEL`.
+
 Notes:
 - The backend now accepts either an `OPENAI_API_KEY` (OpenAI SaaS) OR the Azure triple (`AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_KEY`, `AZURE_OPENAI_DEPLOYMENT`). If neither is present the service will refuse to start.
 
