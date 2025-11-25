@@ -1,6 +1,7 @@
 # backend/app/main.py
 import os
 import time
+import logging
 from .config import load_env, azure_config, openai_key as get_openai_key
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,6 +23,15 @@ if not OPENAI_KEY and not (AZURE_ENDPOINT and AZURE_KEY and AZURE_DEPLOY):
         "No OpenAI credentials found: set OPENAI_API_KEY for OpenAI SaaS, "
         "or AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_KEY|AZURE_OPENAI_API_KEY and AZURE_OPENAI_DEPLOYMENT|AZURE_OPENAI_DEPLOYMENT_NAME for Azure OpenAI"
     )
+else:
+    logger = logging.getLogger("main")
+    logger.setLevel(logging.INFO)
+    if AZURE_ENDPOINT and AZURE_KEY and AZURE_DEPLOY:
+        # Do not log keys; only log endpoint and deployment
+        logger.info("Using Azure OpenAI; endpoint=%s, deployment=%s", AZURE_ENDPOINT, AZURE_DEPLOY)
+    elif OPENAI_KEY:
+        from .config import openai_saas_model
+        logger.info("Using OpenAI SaaS; model=%s", openai_saas_model())
 
 # init RAG store (embedding model / optional FAISS)
 init_rag_store()
