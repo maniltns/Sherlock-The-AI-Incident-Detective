@@ -176,6 +176,21 @@ curl -X POST http://localhost:8000/triage \
 - `LLM call failed: Connection error` with `socket.gaierror: [Errno -2] Name or service not known` — typically DNS or malformed endpoint. Check that `AZURE_OPENAI_ENDPOINT` is a reachable URL (e.g. `https://<resource>.openai.azure.com`) and that container DNS can resolve it. Try `nslookup <host>` from inside a container to validate.
 - `no space left on device` during image build — heavy ML packages can produce large images. Free disk space or remove heavy deps and use `SKIP_EMBEDDINGS=1` for lightweight builds.
 
+- `401 Access denied` from Azure — this typically means the API key doesn't match the resource endpoint, the deployment isn't present on the resource, or the key expired. To diagnose and test a key, replace `<ENDPOINT>`, `<DEPLOYMENT>`, `<API_KEY>`, and `<API_VERSION>` below with your values (do not commit the key):
+
+```bash
+curl -s -X POST "https://<ENDPOINT>/openai/deployments/<DEPLOYMENT>/chat/completions?api-version=<API_VERSION>" \
+  -H "api-key: <API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"system","content":"ping"}], "max_tokens":1}' | jq '.'
+```
+
+Expected result: a minimal JSON from the Azure OpenAI endpoint. If you receive `401 Access denied`, verify the following:
+
+- The API key selected in the Azure portal belongs to the same resource you are using as `AZURE_OPENAI_ENDPOINT`.
+- The `DEPLOYMENT` name matches a valid deployment in that resource.
+- The resource is in the same region and using the `api-version` you expect.
+
 **Testing & development tips**
 - The backend includes simple unit-testable functions in `backend/app` (e.g., `collectors.search_logs`, `correlation.correlate_evidence`). You can add tests and run them in a local venv.
 

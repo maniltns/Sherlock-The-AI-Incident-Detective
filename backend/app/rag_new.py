@@ -1,5 +1,6 @@
 """
-Clean RAG implementation
+Alternative split file to stage a clean `rag` implementation.
+Will replace the broken `rag.py` once verified.
 """
 import os
 import json
@@ -13,7 +14,7 @@ logger.setLevel(logging.INFO)
 
 from .config import load_env, azure_config, openai_key as get_openai_key, openai_saas_model
 
-load_env(path='../.env', override=True)
+load_env(override=True)
 
 MODEL = None
 MODEL_NAME = "all-MiniLM-L6-v2"
@@ -71,8 +72,7 @@ def _resolve_hostname(url: str) -> bool:
         host_only = host.split(":")[0]
         socket.getaddrinfo(host_only, None)
         return True
-    except Exception as e:
-        logger.exception("Hostname resolution failed for %s: %s", host_only, e)
+    except Exception:
         return False
 
 
@@ -91,9 +91,10 @@ def build_prompt_and_query(evidence_items, openai_key: Optional[str]):
         evidence_text += f"{ev['id']}: {ev['type']} — {ev['text'][:800]}\n\n"
 
     system_prompt = (
-        "You are an incident triage assistant named Sherlock. Your task is to analyze the provided evidence and generate a root cause analysis (RCA) as a valid JSON object with exactly these keys: hypothesis (string), confidence (number between 0-100), root_causes (array of objects each with keys: cause (string), evidence (array of IDs)), suggested_actions (array of objects each with keys: action (string), risk (string from low/medium/high), evidence (array of IDs)), evidence_map (object mapping evidence IDs to their text summaries)."
+        "You are Sherlock — an incident triage assistant. Only use evidence provided. "
+        "Return JSON with hypothesis, confidence, root_causes, suggested_actions, evidence_map."
     )
-    user_prompt = f"Evidence:\n{evidence_text}\n\nQuestion: Generate RCA JSON. Return ONLY a valid JSON object - no extra text, explanations, or code blocks."
+    user_prompt = f"Evidence:\n{evidence_text}\n\nQuestion: Generate RCA JSON."
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -125,10 +126,7 @@ def build_prompt_and_query(evidence_items, openai_key: Optional[str]):
                     # Try SaaS fallback
                     fallback = get_openai_key()
                     if fallback:
-                        try:
-                            from openai import OpenAI
-                        except Exception:
-                            raise RuntimeError('OpenAI client not available (install openai package)')
+                        from openai import OpenAI
                         client = OpenAI(api_key=fallback)
                         resp = client.chat.completions.create(model=openai_saas_model(), messages=messages, temperature=0.0, max_tokens=700)
                     else:
@@ -136,10 +134,7 @@ def build_prompt_and_query(evidence_items, openai_key: Optional[str]):
             else:
                 if not openai_key:
                     raise RuntimeError("No credentials for Azure or OpenAI SaaS")
-                try:
-                    from openai import OpenAI
-                except Exception:
-                    raise RuntimeError('OpenAI client not available (install openai package)')
+                from openai import OpenAI
                 client = OpenAI(api_key=openai_key)
                 resp = client.chat.completions.create(model=openai_saas_model(), messages=messages, temperature=0.0, max_tokens=700)
 
@@ -149,7 +144,8 @@ def build_prompt_and_query(evidence_items, openai_key: Optional[str]):
             except Exception:
                 parsed = _extract_json_from_text(txt)
 
-            parsed["evidence_map"] = {ev["id"]: ev["text"][:800] for ev in evidence_items}
+            if "evidence_map" not in parsed:
+                parsed["evidence_map"] = {ev["id"]: ev["text"][:800] for ev in evidence_items}
             return parsed
         except Exception as e:
             last_exc = e

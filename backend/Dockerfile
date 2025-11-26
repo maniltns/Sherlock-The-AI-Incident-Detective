@@ -3,8 +3,9 @@ FROM python:3.11-slim
 
 # system deps needed for some python packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential git curl gcc libsqlite3-dev sqlite3 \
-    && rm -rf /var/lib/apt/lists/*
+    build-essential git curl gcc libsqlite3-dev sqlite3 ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && update-ca-certificates
 
 WORKDIR /app
 

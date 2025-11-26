@@ -20,6 +20,17 @@
           <label>Time window (minutes)
             <input id="timeWindow" type="number" value="30" min="1" max="1440"/>
           </label>
+          <label>Scenario
+            <select id="scenario">
+              <option value="pool">Connection Pool</option>
+              <option value="oom">Memory (OOM)</option>
+              <option value="external">External API</option>
+              <option value="network">Network</option>
+              <option value="cpu">CPU Usage</option>
+              <option value="memory">Memory Leak</option>
+              <option value="api">API Rate Limit</option>
+            </select>
+          </label>
           <button id="sendBtn">Send</button>
           <button id="sampleBtn" class="muted">Generate Sample</button>
         </div>

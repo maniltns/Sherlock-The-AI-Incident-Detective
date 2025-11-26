@@ -24,11 +24,20 @@ def _now_iso(offset_seconds=0):
 def generate_sample_incident(scenario="pool", count=10) -> List[Dict]:
     """
     Append 'count' fabricated log entries and optionally a deploy stub.
-    scenarios: 'pool' | 'oom' | 'external'
+    scenarios: 'pool' | 'oom' | 'external' | 'network' | 'cpu' | 'memory' | 'api'
     Returns list of created log dicts.
     """
     logs = []
-    hosts = ["api-prod-01", "api-prod-02", "db-prod-01"]
+    hosts = ["api-prod-01", "api-prod-02", "db-prod-01", "web-prod-01"]
+    commit_msgs = {
+        "pool": "Commit abc123: increased connection pool default to 50 in db client config",
+        "oom": "Commit def456: adjusted JVM heap memory settings to 1024MB",
+        "external": "Commit ghi789: updated third-party API client timeout to 60s",
+        "network": "Commit jkl012: modified network config for increased bandwidth limits",
+        "cpu": "Commit mno345: optimized CPU-intensive threads with concurrency limits",
+        "memory": "Commit pqr678: implemented garbage collection optimizations",
+        "api": "Commit stu901: added API rate limiting middleware",
+    }
     for i in range(count):
         ts = _now_iso(offset_seconds=random.randint(0, 1800))
         host = random.choice(hosts)
@@ -38,9 +47,17 @@ def generate_sample_incident(scenario="pool", count=10) -> List[Dict]:
             msg = f"{ts} ERROR [{host}] OutOfMemoryError: Java heap space; process killed"
         elif scenario == "external":
             msg = f"{ts} WARN [{host}] third-party-api timeout: upstream latency 1200ms"
+        elif scenario == "network":
+            msg = f"{ts} ERROR [{host}] Connection refused: No route to host xxx.xxx.xxx.xxx"
+        elif scenario == "cpu":
+            msg = f"{ts} WARN [{host}] High CPU usage: 95% sustained, potential deadlock"
+        elif scenario == "memory":
+            msg = f"{ts} ERROR [{host}] Memory leak detected: Resident set size exceeded 8GB limit"
+        elif scenario == "api":
+            msg = f"{ts} ERROR [{host}] API rate limit exceeded: Too many requests (429)"
         else:
             msg = f"{ts} INFO [{host}] synthetic log line {i}"
-        log_entry = {"timestamp": ts, "host": host, "level": "ERROR" if "ERROR" in msg else "INFO", "message": msg}
+        log_entry = {"timestamp": ts, "host": host, "level": "ERROR" if "ERROR" in msg else "WARN" if "WARN" in msg else "INFO", "message": msg}
         logs.append(log_entry)
         with open(LOG_FILE, "a") as fh:
             fh.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
@@ -48,8 +65,8 @@ def generate_sample_incident(scenario="pool", count=10) -> List[Dict]:
     # append a deploy stub for context
     deploy = {
         "timestamp": _now_iso(offset_seconds=900),
-        "commit": "123abc" if scenario == "pool" else "deadbeef",
-        "message": "Commit 123abc: changed connection pool default to 50 in db client config" if scenario == "pool" else "Commit change"
+        "commit": "dummycommit",
+        "message": commit_msgs.get(scenario, "Commit dummy: general fix")
     }
     try:
         with open(DEPLOYS_FILE, "r+") as fh:
@@ -109,12 +126,19 @@ def search_logs(query: str, minutes: int = 30) -> List[Dict]:
 
 def fetch_deploys_stub(query: str, minutes: int = 30) -> List[Dict]:
     """
-    Load deploy stubs from deploys.json for correlation.
+    Load deploy stubs from deploys.json for correlation, filtered by query.
     """
     try:
         with open(DEPLOYS_FILE, "r") as fh:
             arr = json.load(fh)
-            # return recent ones
-            return arr[-10:]
+            if not query:
+                return arr[-10:]
+            q = query.lower()
+            matches = []
+            for d in arr:
+                msg = d.get("message", "").lower()
+                if q in msg or any(token in msg for token in q.split()):
+                    matches.append(d)
+            return matches[-10:]
     except Exception:
         return []

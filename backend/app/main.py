@@ -2,6 +2,12 @@
 import os
 import time
 import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
 from .config import load_env, azure_config, openai_key as get_openai_key, openai_saas_model
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +18,7 @@ from .correlation import correlate_evidence
 from .rag import init_rag_store, build_prompt_and_query
 from .utils import validate_llm_output, attach_audit
 
-load_env(override=True)  # make sure .env is loaded early and override any existing env vars
+load_env(path='../.env', override=True)  # make sure .env is loaded early and override any existing env vars
 OPENAI_KEY = get_openai_key()
 # Allow either OpenAI SaaS key OR Azure OpenAI configuration to be provided.
 # If neither is present, fail fast with a clear message.
@@ -91,17 +97,56 @@ def debug_credentials():
     """Return minimal non-secret status about credentials available to the backend.
     This helps debug when containers report auth errors (e.g., 401 from Azure OpenAI).
     """
+    from .rag import _mask_key
     return {
         "azure": {
             "endpoint": AZURE_ENDPOINT,
             "deployment": AZURE_DEPLOY,
             "has_key": bool(AZURE_KEY),
             "api_version": _AZURE_API_VERSION,
+            "key_fingerprint": _mask_key(AZURE_KEY),
         },
         "openai": {
             "has_key": bool(OPENAI_KEY),
             "saas_model": openai_saas_model(),
+            "key_fingerprint": _mask_key(OPENAI_KEY),
         },
+    }
+
+
+@app.get('/debug/validate_credentials')
+def debug_validate_credentials():
+    """Return a small validation result for Azure and OpenAI SaaS credentials."""
+    from .rag import validate_azure_credentials
+    azure_ok, azure_msg = validate_azure_credentials()
+    # test OpenAI SaaS if available
+    from .config import openai_key as get_openai_key
+    saas_key = get_openai_key()
+    openai_ok = None
+    openai_msg = None
+    if saas_key:
+        try:
+            from openai import OpenAI, AuthenticationError as OpenAIAuthError
+            client = OpenAI(api_key=saas_key)
+            # do a minimal lightweight request
+            resp = client.chat.completions.create(
+                model=__import__('backend.app.config', fromlist=['openai_saas_model']).openai_saas_model(),
+                messages=[{"role":"system","content":"Ping."}],
+                temperature=0.0,
+                max_tokens=1,
+            )
+            openai_ok = True
+            openai_msg = 'ok'
+        except OpenAIAuthError as e:
+            openai_ok = False
+            openai_msg = f'auth_error: {e}'
+        except Exception as e:
+            openai_ok = False
+            openai_msg = f'error: {e}'
+
+    return {
+        "azure_validation": {"ok": azure_ok, "message": azure_msg},
+        "openai_saas_validation": {"ok": openai_ok, "message": openai_msg},
     }
 
 @app.post("/triage")
@@ -185,7 +230,6 @@ def triage(req: TriageRequest):
             "confidence": 45.0,
             "root_causes": [{"cause": top_k[0]["text"][:200], "evidence": [top_k[0]["id"]]}],
             "suggested_actions": [{"action": "Inspect the logs and recent commits", "risk": "low", "evidence": [top_k[0]["id"]]}],
-            "evidence_map": {ev["id"]: ev["text"][:800] for ev in top_k}
         }
 
     latency = int((time.time() - start) * 1000)

@@ -4,6 +4,7 @@
   const sampleBtn = document.getElementById('sampleBtn');
   const queryEl = document.getElementById('query');
   const timeWindowEl = document.getElementById('timeWindow');
+  const scenarioEl = document.getElementById('scenario');
   const resultSec = document.getElementById('result');
   const summaryDiv = document.getElementById('summary');
   const evidenceDiv = document.getElementById('evidence');
@@ -24,10 +25,14 @@
   function renderResult(obj) {
     resultSec.classList.remove('hidden');
     // summary
+    const conf = obj.confidence ?? 0;
     summaryDiv.innerHTML = `
       <h2>Hypothesis</h2>
       <p><strong>${escapeHtml(obj.hypothesis || 'No hypothesis')}</strong></p>
-      <p class="small">Confidence: ${obj.confidence ?? 'N/A'}</p>
+      <div class="confidence">
+        Confidence: ${conf}%
+        <progress value="${conf}" max="100"></progress>
+      </div>
     `;
 
     // evidence
@@ -63,10 +68,10 @@
   function escapeHtml(s) {
     if (!s && s !== 0) return '';
     return String(s)
-      .replaceAll('&','&amp;')
-      .replaceAll('<','&lt;')
-      .replaceAll('>','&gt;')
-      .replaceAll('"','&quot;')
+      .replaceAll('&','&')
+      .replaceAll('<','<')
+      .replaceAll('>','>')
+      .replaceAll('"','"')
       .replaceAll("'",'&#39;');
   }
 
@@ -99,7 +104,7 @@
       const res = await fetch(url, {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({scenario:'pool', count:12})
+        body: JSON.stringify({scenario: scenarioEl.value, count:12})
       });
       if (!res.ok) throw new Error(`Generate sample failed: ${res.statusText}`);
       const out = await res.json();
