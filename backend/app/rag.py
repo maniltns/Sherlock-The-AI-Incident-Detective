@@ -1,5 +1,6 @@
+# backend/app/rag.py
 """
-Clean RAG implementation
+Clean RAG + improved SRE-style RCA prompting
 """
 import os
 import json
@@ -15,26 +16,18 @@ from .config import load_env, azure_config, openai_key as get_openai_key, openai
 
 load_env(path='../.env', override=True)
 
-MODEL = None
-MODEL_NAME = "all-MiniLM-L6-v2"
 SKIP_EMB = os.getenv("SKIP_EMBEDDINGS", "0").lower() in ("1", "true")
 
-
-def init_rag_store():
-    global MODEL
-    if SKIP_EMB:
-        logger.info("SKIP_EMBEDDINGS set -> Skipping embedding init.")
-        return
-    try:
-        from sentence_transformers import SentenceTransformer
-        MODEL = SentenceTransformer(MODEL_NAME)
-        logger.info("Loaded embedding model")
-    except Exception as e:
-        logger.exception("Embedding load failed: %s", e)
-        MODEL = None
-
+def _mask_key(k: str):
+    if not k:
+        return None
+    k = str(k)
+    if len(k) <= 8:
+        return k[:1] + '...' + k[-1:]
+    return k[:4] + '...' + k[-4:]
 
 def _extract_json_from_text(text: str):
+    # extract first JSON object from a text blob
     start = text.find("{")
     if start == -1:
         raise ValueError("No JSON object in output")
@@ -52,16 +45,6 @@ def _extract_json_from_text(text: str):
         raise ValueError("Unbalanced JSON")
     return json.loads(text[start:end+1])
 
-
-def _mask_key(k: str):
-    if not k:
-        return None
-    k = str(k)
-    if len(k) <= 8:
-        return k[:1] + '...' + k[-1:]
-    return k[:4] + '...' + k[-4:]
-
-
 def _resolve_hostname(url: str) -> bool:
     try:
         parsed = urlparse(url)
@@ -71,29 +54,40 @@ def _resolve_hostname(url: str) -> bool:
         host_only = host.split(":")[0]
         socket.getaddrinfo(host_only, None)
         return True
-    except Exception as e:
-        logger.exception("Hostname resolution failed for %s: %s", host_only, e)
+    except Exception:
         return False
 
-
 def build_prompt_and_query(evidence_items, openai_key: Optional[str]):
+    """
+    Build SRE-style prompt and query backend LLM (Azure or OpenAI SaaS).
+    Returns parsed JSON with keys: hypothesis, confidence, root_causes, suggested_actions, evidence_map
+    """
     azure_endpoint, azure_key, azure_deploy, azure_api_version = azure_config()
-
     if azure_endpoint:
-        azure_endpoint = azure_endpoint.strip()
-        if azure_endpoint.endswith("/"):
-            azure_endpoint = azure_endpoint[:-1]
-        if not azure_endpoint.startswith("http://") and not azure_endpoint.startswith("https://"):
+        azure_endpoint = azure_endpoint.strip().rstrip("/")
+        if not azure_endpoint.startswith("http"):
             azure_endpoint = "https://" + azure_endpoint
 
     evidence_text = ""
     for ev in evidence_items:
-        evidence_text += f"{ev['id']}: {ev['type']} — {ev['text'][:800]}\n\n"
+        evidence_text += f"{ev['id']}: {ev['type']} — {ev['text'][:1000]}\n"
 
     system_prompt = (
-        "You are an incident triage assistant named Sherlock. Your task is to analyze the provided evidence and generate a root cause analysis (RCA) as a valid JSON object with exactly these keys: hypothesis (string), confidence (number between 0-100), root_causes (array of objects each with keys: cause (string), evidence (array of IDs)), suggested_actions (array of objects each with keys: action (string), risk (string from low/medium/high), evidence (array of IDs)), evidence_map (object mapping evidence IDs to their text summaries)."
+        "You are Sherlock, an SRE/Incident Triage assistant. Produce a single valid JSON object ONLY. "
+        "This JSON must follow the enterprise RCA schema exactly and be grounded to the provided evidence. "
+        "Do NOT fabricate evidence IDs; only reference the IDs provided in the evidence map.\n\n"
+        "Required JSON schema (keys):\n"
+        " - hypothesis: short summary string (1-2 sentences)\n"
+        " - confidence: integer 0-100\n"
+        " - impact: short bullet-style string describing affected services/customers\n"
+        " - root_causes: array of objects {cause: string, evidence: [id,...], probability: 0-100}\n"
+        " - contributing_factors: array of short strings\n"
+        " - suggested_actions: array of objects {action: string, type: 'mitigate'|'fix'|'monitor'|'rollback', risk: 'low'|'medium'|'high', eta_minutes: integer or null, evidence: [id,...], rollback_plan: optional string}\n"
+        " - evidence_map: object mapping evidence id -> text summary\n\n"
+        "IMPORTANT: Return ONLY the JSON object. No surrounding text, code fences, or explanation."
     )
-    user_prompt = f"Evidence:\n{evidence_text}\n\nQuestion: Generate RCA JSON. Return ONLY a valid JSON object - no extra text, explanations, or code blocks."
+
+    user_prompt = f"Evidence:\n{evidence_text}\n\nProduce RCA JSON per schema above."
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -103,45 +97,23 @@ def build_prompt_and_query(evidence_items, openai_key: Optional[str]):
     if not openai_key:
         openai_key = get_openai_key()
 
-    max_attempts = 2
     last_exc = None
-    for attempt in range(1, max_attempts + 1):
-        logger.info("LLM call attempt %d/%d", attempt, max_attempts)
+    for attempt in range(1, 3):
+        logger.info("LLM call attempt %d", attempt)
         try:
-            # Try Azure first
+            # prefer Azure if present
             if azure_endpoint and azure_key and azure_deploy:
-                logger.info("Attempting Azure OpenAI: %s (%s)", azure_endpoint, azure_deploy)
                 if not _resolve_hostname(azure_endpoint):
                     raise RuntimeError("Azure endpoint not resolvable")
-                try:
-                    from openai import AzureOpenAI, AuthenticationError as OpenAIAuthError
-                except Exception:
-                    raise RuntimeError('Azure OpenAI client not available (install openai package)')
+                from openai import AzureOpenAI, AuthenticationError as OpenAIAuthError
                 client = AzureOpenAI(api_key=azure_key, azure_endpoint=azure_endpoint, api_version=azure_api_version)
-                try:
-                    resp = client.chat.completions.create(model=azure_deploy, messages=messages, temperature=0.0, max_tokens=700)
-                except OpenAIAuthError as e:
-                    logger.error("Azure auth failed: %s", e)
-                    # Try SaaS fallback
-                    fallback = get_openai_key()
-                    if fallback:
-                        try:
-                            from openai import OpenAI
-                        except Exception:
-                            raise RuntimeError('OpenAI client not available (install openai package)')
-                        client = OpenAI(api_key=fallback)
-                        resp = client.chat.completions.create(model=openai_saas_model(), messages=messages, temperature=0.0, max_tokens=700)
-                    else:
-                        raise
+                resp = client.chat.completions.create(model=azure_deploy, messages=messages, temperature=0.0, max_tokens=900)
             else:
                 if not openai_key:
                     raise RuntimeError("No credentials for Azure or OpenAI SaaS")
-                try:
-                    from openai import OpenAI
-                except Exception:
-                    raise RuntimeError('OpenAI client not available (install openai package)')
+                from openai import OpenAI
                 client = OpenAI(api_key=openai_key)
-                resp = client.chat.completions.create(model=openai_saas_model(), messages=messages, temperature=0.0, max_tokens=700)
+                resp = client.chat.completions.create(model=openai_saas_model(), messages=messages, temperature=0.0, max_tokens=900)
 
             txt = resp.choices[0].message.content
             try:
@@ -149,30 +121,18 @@ def build_prompt_and_query(evidence_items, openai_key: Optional[str]):
             except Exception:
                 parsed = _extract_json_from_text(txt)
 
+            # Always attach evidence_map from our server-side evidence_items (defensive)
             parsed["evidence_map"] = {ev["id"]: ev["text"][:800] for ev in evidence_items}
+            # normalize confidence to int
+            try:
+                parsed["confidence"] = int(parsed.get("confidence", 0))
+            except Exception:
+                parsed["confidence"] = 0
             return parsed
         except Exception as e:
             last_exc = e
-            logger.exception("LLM attempt %d failed: %s", attempt, e)
-            if attempt < max_attempts:
-                messages.append({"role": "user", "content": "IMPORTANT: Please return ONLY a single valid JSON object and nothing else."})
+            logger.exception("LLM attempt failed: %s", e)
+            # on failure, append user hint to be stricter
+            messages.append({"role": "user", "content": "Return EXACTLY a single JSON object matching the schema and nothing else."})
             continue
-    raise last_exc if last_exc else RuntimeError("LLM calls failed for unknown reasons")
-
-
-def validate_azure_credentials():
-    azure_endpoint, azure_key, azure_deploy, azure_api_version = azure_config()
-    if not (azure_endpoint and azure_key and azure_deploy):
-        return False, "no_azure_credentials"
-    try:
-        from openai import AzureOpenAI, AuthenticationError as OpenAIAuthError
-    except Exception:
-        return False, "openai-sdk-missing"
-    try:
-        client = AzureOpenAI(api_key=azure_key, azure_endpoint=azure_endpoint, api_version=azure_api_version)
-        resp = client.chat.completions.create(model=azure_deploy, messages=[{"role":"system","content":"Ping."}], temperature=0.0, max_tokens=1)
-        return True, "ok"
-    except OpenAIAuthError as e:
-        return False, f"auth_error: {e}"
-    except Exception as e:
-        return False, f"error: {e}"
+    raise last_exc if last_exc else RuntimeError("LLM calls failed")

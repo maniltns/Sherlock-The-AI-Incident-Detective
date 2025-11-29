@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Sherlock - Incident Chat</title>
+  <title>Sherlock — Incident Chat</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -10,17 +10,34 @@
   <div id="app">
     <header>
       <h1>Sherlock — Incident Chat</h1>
-      <p class="subtitle">Type a natural query and press Send. Use "Generate Sample" to create a synthetic incident.</p>
+      <p class="subtitle">Ask natural-language questions about incidents. Use Generate Sample to seed realistic logs, metrics and deploy stubs.</p>
     </header>
 
     <main>
-      <div class="controls">
+      <div class="controls card">
         <textarea id="query" placeholder="e.g. Why are we seeing 500s on api-prod-01 since 10:00?" rows="3"></textarea>
-        <div class="row">
+
+        <div class="row wrap">
           <label>Time window (minutes)
             <input id="timeWindow" type="number" value="30" min="1" max="1440"/>
           </label>
-          <label>Scenario
+
+          <label>Top K evidence
+            <select id="topK">
+              <option value="3">3</option>
+              <option value="6" selected>6</option>
+              <option value="10">10</option>
+            </select>
+          </label>
+
+          <fieldset class="sources">
+            <legend>Sources</legend>
+            <label><input type="checkbox" id="src_logs" checked/> Logs</label>
+            <label><input type="checkbox" id="src_deploys" checked/> Deploys</label>
+            <label><input type="checkbox" id="src_metrics" checked/> Metrics</label>
+          </fieldset>
+
+          <label>Scenario (sample logs)
             <select id="scenario">
               <option value="pool">Connection Pool</option>
               <option value="oom">Memory (OOM)</option>
@@ -31,25 +48,42 @@
               <option value="api">API Rate Limit</option>
             </select>
           </label>
-          <button id="sendBtn">Send</button>
-          <button id="sampleBtn" class="muted">Generate Sample</button>
+
+          <div class="buttons">
+            <button id="sendBtn">Send</button>
+            <button id="sampleBtn" class="muted">Generate Sample</button>
+            <button id="credsBtn" class="muted">Check Credentials</button>
+            <button id="validateBtn" class="muted">Validate Credentials</button>
+          </div>
         </div>
+
+        <div id="backendHint" class="small muted">Backend endpoint: <span id="backendUrl"></span></div>
       </div>
 
       <section id="result" class="hidden">
         <div id="summary" class="card"></div>
+        <div id="metricsPanel" class="card"></div>
         <div id="evidence" class="card"></div>
         <div id="actions" class="card"></div>
-        <div id="raw" class="card"><h3>Raw JSON</h3><pre id="rawJson"></pre></div>
+
+        <div id="raw" class="card">
+          <div class="raw-controls">
+            <button id="copyJson" class="muted">Copy JSON</button>
+            <button id="downloadJson" class="muted">Download JSON</button>
+          </div>
+          <h3>Raw JSON</h3>
+          <pre id="rawJson" aria-live="polite"></pre>
+        </div>
       </section>
 
-      <div id="info" class="card muted small">Backend endpoint: <span id="backendUrl"></span></div>
+      <aside id="debug" class="card small muted hidden"></aside>
     </main>
 
     <footer>
-      <small>PoC — OpenAI-backed RAG. No auto-remediation. Keep PII redacted.</small>
+      <small>PoC — OpenAI-backed RAG + simulated collectors. No auto-remediation. Keep PII redacted.</small>
     </footer>
   </div>
+
 <script src="app.js"></script>
 </body>
 </html>
